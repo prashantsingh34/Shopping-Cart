@@ -2,7 +2,12 @@ version: 2.1
 orbs:
   node: circleci/node@5.1
 
-
+steps: &gcloud-setup
+      name: Set up GCloud
+      command: |
+        echo $GCLOUD_SERVICE_KEY | gcloud auth activate-service-account --key-file=-
+        gcloud --quiet config set project ${GOOGLE_PROJECT_ID}
+        gcloud --quiet config set compute/zone ${GOOGLE_COMPUTE_ZONE}
 jobs:
   test-node:
     # Install node dependencies and run tests
@@ -23,11 +28,7 @@ jobs:
       - setup_remote_docker:
           docker_layer_caching: true
       - run:
-          name: Set up GCloud
-          command: |
-            echo $GCLOUD_SERVICE_KEY | gcloud auth activate-service-account --key-file=-
-              gcloud --quiet config set project ${GOOGLE_PROJECT_ID}
-              gcloud --quiet config set compute/zone ${GOOGLE_COMPUTE_ZONE}
+          <<: *gcloud-setup
       - run:
           name: Set up Docker for gcloud
           command: |
@@ -57,8 +58,7 @@ jobs:
       - setup_remote_docker:
           docker_layer_caching: true
       - run:
-          name: Get the current project
-          command: gcloud config get project     
+          <<: *gcloud-setup         
       - run:
           name: Update the container image for the instance
           command: |
