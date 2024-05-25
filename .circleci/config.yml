@@ -1,0 +1,93 @@
+version: 2.1
+orbs:
+  node: circleci/node@5.1
+
+
+jobs:
+  test-node:
+    # Install node dependencies and run tests
+    executor: node/default
+    steps:
+      - checkout
+      - node/install-packages:
+          pkg-manager: npm
+      - run:
+          name: Run tests
+          command: npm test --passWithNoTests
+  build:
+    docker:
+      - image: google/cloud-sdk
+
+    steps:
+      - checkout
+      - setup_remote_docker:
+          docker_layer_caching: true
+      - run:
+          name: Set up GCloud
+          command: |
+            echo $GCLOUD_SERVICE_KEY | gcloud auth activate-service-account --key-file=-
+              gcloud --quiet config set project ${GOOGLE_PROJECT_ID}
+              gcloud --quiet config set compute/zone ${GOOGLE_COMPUTE_ZONE}
+      - run:
+          name: Set up Docker for gcloud
+          command: |
+            gcloud auth configure-docker asia-south1-docker.pkg.dev
+      - run:
+          name: Docker build
+          command: |
+            docker build -t react-app .
+      - run:
+          name: Tag Docker image
+          command: |
+            docker tag react-app asia-south1-docker.pkg.dev/elite-totality-418717/shopping-cart/shopping-cart-image
+      - run:
+          name: Push docker image
+          command: | 
+            docker push asia-south1-docker.pkg.dev/elite-totality-418717/shopping-cart/shopping-cart-image
+  release-approval:
+    docker:
+      - image: google/cloud-sdk
+    steps:
+      - checkout
+  deploy:
+    docker:
+      - image: google/cloud-sdk
+    steps:
+      - checkout
+      - setup_remote_docker:
+          docker_layer_caching: true
+      - run:
+          name: Get the current project
+          command: gcloud config get project     
+      - run:
+          name: Update the container image for the instance
+          command: |
+            gcloud compute instances update-container instance-shopping-cart --zone asia-south1-a  --container-image=asia-south1-docker.pkg.dev/elite-totality-418717/shopping-cart/shopping-cart-image:latest
+      
+workflows:
+  build-test-deploy:
+    jobs:
+      - test-node
+      - build:
+          requires:
+            - test-node
+      - release-approval:
+          type: approval
+          requires:
+            - test-node
+            - build
+          filters:
+             branches:
+               only:
+                 - main
+      - deploy:
+          requires:
+            - test-node
+            - build
+            - release-approval
+          filters:
+             branches:
+               only:
+                 - main        
+
+
